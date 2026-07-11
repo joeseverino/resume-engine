@@ -25,8 +25,12 @@ build rather than let the resume quietly grow a second page.
 
 **The site sync** (in the
 [jseverino.com](https://github.com/joeseverino/jseverino.com) repo) renders
-the same file to the web page, stripping markers and whitelisting frontmatter
-so contact fields never enter the public repo.
+the same file to the web page as styled rows, stripping markers and
+whitelisting frontmatter so contact fields never enter the public repo.
+
+Both renderers import `lib/grammar.mjs` from this repo: one definition of the
+line shapes, the surface-marker semantics, and the tenure-span math. The
+grammar cannot drift between the page and the paper because it exists once.
 
 Per-line surface markers decide what each surface shows. A line suffixed
 `<!--site-only-->` stays on the web page and off the artifacts;
