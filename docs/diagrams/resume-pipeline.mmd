@@ -1,0 +1,38 @@
+%%{init: {'flowchart': {'rankSpacing': 70, 'nodeSpacing': 50}}}%%
+flowchart TB
+    canonical["Career/resume.md · private vault canonical<br/>frontmatter identity (phone lives only here)<br/>superset body with per-line surface markers"]
+
+    subgraph markers["The optionality system"]
+        so["&lt;!--site-only--&gt;<br/>web keeps · artifacts drop"]
+        po["&lt;!--pdf-only--&gt;<br/>artifacts keep · web drops"]
+    end
+    canonical --- markers
+
+    subgraph commons["Shared commons · nothing rendered twice"]
+        pe["tools/lib/pdf-engine<br/>Chromium print · the engine doc-to-pdf uses"]
+        bk["severino-brand kit tokens<br/>every color is a named token"]
+    end
+
+    subgraph engine["generate-resumes · this repo"]
+        parse["strict parser<br/>unknown line = failed render"]
+        theme["EB Garamond theme<br/>bold date column · one-page gate (pdfinfo)"]
+    end
+    canonical ==>|markers applied| engine
+    pe --> engine
+    bk --> engine
+
+    sync["site repo sync:content<br/>markers stripped · frontmatter whitelist<br/>(contact fields never reach the public repo)"]
+    canonical ==>|same source| sync
+
+    master["master PDF (with phone)<br/>Career/Resumes/"]
+    public["redacted PDF<br/>site public/assets/docs/"]
+    mdres["markdown resume<br/>Career/Resumes/"]
+    page["jseverino.com/resume/<br/>the fuller cut"]
+
+    engine --> master
+    engine --> public
+    engine --> mdres
+    sync --> page
+
+    classDef anchor stroke-width:2px;
+    class canonical anchor;
