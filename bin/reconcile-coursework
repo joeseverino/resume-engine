@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+// reconcile-coursework — sync the canonical resume's coursework lines from the
+// education vault's governed export. Thin launcher; implementation lives in
+// lib/reconcile-coursework/.
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+await import(path.join(here, '..', 'lib', 'reconcile-coursework', 'index.mjs'));
