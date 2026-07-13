@@ -10,8 +10,6 @@ here, the same way the site carries a View Source link.
 
 ## Architecture
 
-![resume-engine pipeline](docs/diagrams/resume-pipeline.png)
-
 The canonical resume lives in a private vault, outside this repo. Its
 frontmatter carries the contact identity (the phone number exists nowhere
 else), and its body is a superset of every surface. Two renderers consume it.
@@ -42,8 +40,6 @@ Nothing renders twice. The HTML-to-PDF machinery is the
 [tools](https://github.com/joeseverino/tools) repo's shared `lib/pdf-engine`,
 the same engine `doc-to-pdf` prints with, and every color is a named token
 from the [severino-brand](https://github.com/joeseverino/severino-brand) kit.
-The architecture figure above is itself rendered by the same toolchain
-(`diagram`, brand-themed Mermaid).
 
 ## Usage
 
@@ -64,6 +60,21 @@ Both dependency repos are public. Clone
 [severino-brand](https://github.com/joeseverino/severino-brand) alongside this
 repo (or point `TOOLS_HOME` and `BRAND_HOME` at them) and it runs offline:
 local Chromium is the print engine, fonts are vendored, nothing is fetched.
+
+### reconcile-coursework
+
+```sh
+bin/reconcile-coursework [--check]
+```
+
+The one line whose facts live outside the canonical — each institution's
+"Relevant Coursework" — is reconciled from the education vault's governed
+export (`severino-edu-mcp export`), the same dataset behind the site's
+`/education/` pages: completed courses only, in term order, `short_title`
+preferred over the catalog title. Trailing surface markers are preserved,
+institutions without a vault presence are left alone, and `--check` reports
+drift without writing. The canonical stays the single readable one-pager;
+this keeps its coursework line honest.
 
 ## Design decisions
 
