@@ -1,0 +1,32 @@
+{
+  "name": "resume-engine",
+  "version": "1.0.0",
+  "description": "Render one canonical markdown resume to a typeset PDF, a redacted public copy, and a standalone markdown resume.",
+  "private": true,
+  "license": "MIT",
+  "author": "Joe Severino",
+  "homepage": "https://github.com/joeseverino/resume-engine",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joeseverino/resume-engine.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "npm@11.19.0",
+  "bin": {
+    "generate-resumes": "bin/generate-resumes",
+    "reconcile-coursework": "bin/reconcile-coursework"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --test 'tests/**/*.test.ts'",
+    "check:types": "tsc",
+    "check:unit": "node --test 'tests/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "typescript": "^6.0.3"
+  }
+}
