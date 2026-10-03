@@ -1,25 +1,82 @@
-#!/usr/bin/env node
-// generate-resumes — render the canonical resume (Life vault markdown) to
+// generate-resumes: render the canonical resume (Life vault markdown) to
 // every surface: master PDF (with phone), redacted public PDF (site repo),
 // and a redacted standalone markdown artifact. Layout is this repo's theme
-// (EB Garamond, date columns, no monogram); the HTML→PDF machinery is the
+// (EB Garamond, date columns, no monogram); the HTML-to-PDF machinery is the
 // tools repo's shared pdf-engine (TOOLS_HOME), the same engine doc-to-pdf
-// prints with — no rendering logic is duplicated here.
+// prints with. No rendering logic is duplicated here.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { linesForArtifacts, matchOrg, matchRole, matchCert, matchProjectMeta, tenureSpan } from '../grammar.mjs';
+import {
+  linesForArtifacts,
+  matchOrg,
+  matchRole,
+  matchCert,
+  matchProjectMeta,
+  tenureSpan,
+  type ProjectMeta,
+} from '../grammar.ts';
+
+// The surface of the tools repo's untyped pdf-engine this renderer uses.
+interface PdfEngine {
+  fileDataUrl(file: string, mediaType: string): string;
+  htmlText(value: string): string;
+  findChromium(explicitPath?: string): string | null;
+  printHtmlToPdf(options: {
+    chrome: string;
+    html: string;
+    output: string;
+    tmpPrefix?: string;
+    keepHtml?: boolean;
+    onKeepHtml?: (file: string) => void;
+  }): void;
+}
+
+interface Role {
+  title: string;
+  dates: string;
+  bullets: string[];
+}
+
+interface Org {
+  name: string;
+  location: string;
+  roles: Role[];
+}
+
+interface Project {
+  title: string;
+  meta: ProjectMeta | null;
+  bullets: string[];
+}
+
+interface Section {
+  title: string;
+  orgs: Org[];
+  items: string[];
+  projects: Project[];
+}
+
+interface Identity {
+  name: string;
+  email: string;
+  linkedin: string;
+  github: string;
+  website: string;
+  location: string;
+  phone?: string;
+}
 
 const repoHome = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const codeHome = process.env.CODE_HOME || path.join(os.homedir(), 'Documents', 'Code');
+const codeHome = process.env.CODE_HOME || path.join(os.homedir(), 'Code');
 const toolsHome = process.env.TOOLS_HOME || path.join(codeHome, 'Assets', 'tools');
 const lifeHome = process.env.LIFE_HOME || path.join(os.homedir(), 'Documents', 'Life');
 const careerHome = process.env.CAREER_HOME || path.join(os.homedir(), 'Documents', 'Career');
 const siteHome = process.env.SITE_HOME || path.join(codeHome, 'Projects', 'jseverino.com');
 
-function die(msg) {
+function die(msg: string): never {
   console.error(`generate-resumes: ${msg}`);
   process.exit(1);
 }
@@ -65,62 +122,66 @@ if (!fs.existsSync(input)) die(`canonical resume not found: ${input}`);
 
 const enginePath = path.join(toolsHome, 'lib', 'pdf-engine', 'index.mjs');
 if (!fs.existsSync(enginePath)) die(`tools pdf-engine not found: ${enginePath} (set TOOLS_HOME)`);
-const { fileDataUrl, htmlText, findChromium, printHtmlToPdf } = await import(enginePath);
+const { fileDataUrl, htmlText, findChromium, printHtmlToPdf } = (await import(enginePath)) as PdfEngine;
 
 // ---------------------------------------------------------------------------
 // Parse: frontmatter (contact identity) + the structured resume body.
-// The parser is deliberately strict — an unrecognized body line kills the
+// The parser is deliberately strict: an unrecognized body line kills the
 // render, so content drift in the canonical gets caught here, not on paper.
 // ---------------------------------------------------------------------------
 
 const raw = fs.readFileSync(input, 'utf8');
 const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
 if (!fmMatch) die('canonical resume has no frontmatter');
-const frontmatter = {};
-for (const line of fmMatch[1].split('\n')) {
+const fields: Record<string, string> = {};
+for (const line of (fmMatch[1] ?? '').split('\n')) {
   const kv = line.match(/^([a-z_]+):\s*(.+)$/);
-  if (kv && !/^[>|]/.test(kv[2].trim())) frontmatter[kv[1]] = kv[2].trim().replace(/^['"]|['"]$/g, '');
+  if (!kv) continue;
+  const [, key = '', value = ''] = kv;
+  if (!/^[>|]/.test(value.trim())) fields[key] = value.trim().replace(/^['"]|['"]$/g, '');
 }
-for (const key of ['name', 'email', 'linkedin', 'github', 'website', 'location']) {
-  if (!frontmatter[key]) die(`frontmatter is missing "${key}"`);
+function field(key: string): string {
+  const value = fields[key];
+  if (!value) die(`frontmatter is missing "${key}"`);
+  return value;
+}
+const frontmatter: Identity = {
+  name: field('name'),
+  email: field('email'),
+  linkedin: field('linkedin'),
+  github: field('github'),
+  website: field('website'),
+  location: field('location'),
+  ...(fields.phone ? { phone: fields.phone } : {}),
+};
+
+function absoluteHref(href: string): string {
+  return href.startsWith('/') ? `https://${frontmatter.website}${href}` : href;
 }
 
-function inlineHtml(text) {
+function inlineHtml(text: string): string {
   return htmlText(text)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, href) => {
-      const absolute = href.startsWith('/') ? `https://${frontmatter.website}${href}` : href;
-      return `<a href="${absolute}">${label}</a>`;
-    });
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_: string, label: string, href: string) => `<a href="${absoluteHref(href)}">${label}</a>`);
 }
 
 const body = linesForArtifacts(raw.slice(fmMatch[0].length).split('\n'));
-const sections = [];
-let section = null;
-let org = null;
-let role = null;
-let project = null;
-let skippingBlock = false;
+const sections: Section[] = [];
+let section: Section | null = null;
+let org: Org | null = null;
+let role: Role | null = null;
+let project: Project | null = null;
 
-for (let n = 0; n < body.length; n += 1) {
-  const line = body[n].trimEnd();
+for (const [n, line] of body.entries()) {
   const trimmed = line.trim();
 
-  if (skippingBlock) {
-    if (trimmed === '::') skippingBlock = false;
-    continue;
-  }
   if (!trimmed || trimmed === '---') continue;
   if (trimmed.startsWith('<p')) continue;
-  if (trimmed.startsWith('::')) {
-    if (!/::\s*$/.test(trimmed) || trimmed !== '::') skippingBlock = trimmed !== '::';
-    continue;
-  }
 
   const h2 = trimmed.match(/^##\s+(.+)$/);
   if (h2) {
-    section = { title: h2[1], orgs: [], items: [], projects: [] };
+    section = { title: h2[1] ?? '', orgs: [], items: [], projects: [] };
     sections.push(section);
     org = role = project = null;
     continue;
@@ -135,7 +196,7 @@ for (let n = 0; n < body.length; n += 1) {
       section.orgs.push(org);
       role = project = null;
     } else {
-      project = { title: h3[1], meta: null, bullets: [] };
+      project = { title: h3[1] ?? '', meta: null, bullets: [] };
       section.projects.push(project);
       org = role = null;
     }
@@ -151,15 +212,16 @@ for (let n = 0; n < body.length; n += 1) {
 
   const projectMeta = matchProjectMeta(trimmed);
   if (projectMeta && project) {
-    project.meta = { label: projectMeta.label, href: projectMeta.href, date: projectMeta.date };
+    project.meta = projectMeta;
     continue;
   }
 
   const bullet = trimmed.match(/^-\s+(.+)$/);
   if (bullet) {
-    if (project) project.bullets.push(bullet[1]);
-    else if (role) role.bullets.push(bullet[1]);
-    else if (section && !org) section.items.push(bullet[1]);
+    const text = bullet[1] ?? '';
+    if (project) project.bullets.push(text);
+    else if (role) role.bullets.push(text);
+    else if (!org) section.items.push(text);
     else die(`bullet without a home (line ${n + 1}): ${trimmed}`);
     continue;
   }
@@ -188,19 +250,18 @@ const garamondItalic = fileDataUrl(
 );
 
 // The header matches the original Word one-pager: identity links only, no
-// location line — the city lives on the site page.
-function contactLine(withPhone) {
-  const parts = [
+// location line. The city lives on the site page.
+function contactLine(withPhone: boolean): string[] {
+  return [
     frontmatter.email,
     ...(withPhone && frontmatter.phone ? [frontmatter.phone] : []),
     frontmatter.linkedin,
     frontmatter.github,
     frontmatter.website,
   ];
-  return { parts };
 }
 
-function renderCertItem(item) {
+function renderCertItem(item: string): string {
   const cert = matchCert(item);
   if (cert) {
     return `<div class="row cert"><span><strong><a href="${cert.url}">${htmlText(cert.name)}</a></strong> – ${htmlText(cert.issuer)}</span><span class="dates">${htmlText(cert.date)}</span></div>`;
@@ -208,7 +269,7 @@ function renderCertItem(item) {
   return `<div class="row cert"><span>${inlineHtml(item)}</span></div>`;
 }
 
-function renderSection(sec) {
+function renderSection(sec: Section): string {
   const parts = [`<section><h2>${htmlText(sec.title)}</h2>`];
   const plainSubLines = sec.title.trim().toUpperCase() === 'EDUCATION';
 
@@ -241,8 +302,7 @@ function renderSection(sec) {
     const date = p.meta ? `<span class="dates">${htmlText(p.meta.date)}</span>` : '';
     parts.push(`<div class="row role project"><span class="role-title">${htmlText(p.title)}</span>${date}</div>`);
     if (p.meta) {
-      const href = p.meta.href.startsWith('/') ? `https://${frontmatter.website}${p.meta.href}` : p.meta.href;
-      parts.push(`<div class="subline project-link"><a href="${href}">${htmlText(p.meta.label)}</a></div>`);
+      parts.push(`<div class="subline project-link"><a href="${absoluteHref(p.meta.href)}">${htmlText(p.meta.label)}</a></div>`);
     }
     if (p.bullets.length) parts.push(`<ul>${p.bullets.map((b) => `<li>${inlineHtml(b)}</li>`).join('')}</ul>`);
   }
@@ -251,8 +311,7 @@ function renderSection(sec) {
   return parts.join('\n');
 }
 
-function renderHtml({ withPhone }) {
-  const contact = contactLine(withPhone);
+function renderHtml(withPhone: boolean): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>${htmlText(frontmatter.name)} — Resume</title>
@@ -306,7 +365,7 @@ function renderHtml({ withPhone }) {
 <body>
 <header>
   <h1>${htmlText(frontmatter.name)}</h1>
-  <div class="contact">${contact.parts.map((p) => `<span>${htmlText(p)}</span>`).join('')}</div>
+  <div class="contact">${contactLine(withPhone).map((p) => `<span>${htmlText(p)}</span>`).join('')}</div>
 </header>
 ${sections.map(renderSection).join('\n')}
 </body></html>`;
@@ -316,9 +375,8 @@ ${sections.map(renderSection).join('\n')}
 // Markdown artifact: the redacted, standalone resume as clean markdown.
 // ---------------------------------------------------------------------------
 
-function renderMarkdown() {
-  const contact = contactLine(false);
-  const lines = [`# ${frontmatter.name}`, '', contact.parts.join(' | '), ''];
+function renderMarkdown(): string {
+  const lines = [`# ${frontmatter.name}`, '', contactLine(false).join(' | '), ''];
   for (const sec of sections) {
     lines.push(`## ${sec.title}`, '');
     for (const o of sec.orgs) {
@@ -333,7 +391,7 @@ function renderMarkdown() {
     if (sec.items.length) lines.push('');
     for (const p of sec.projects) {
       lines.push(`### ${p.title}`, '');
-      if (p.meta) lines.push(`[${p.meta.label}](${p.meta.href.startsWith('/') ? `https://${frontmatter.website}${p.meta.href}` : p.meta.href}) — ${p.meta.date}`, '');
+      if (p.meta) lines.push(`[${p.meta.label}](${absoluteHref(p.meta.href)}) — ${p.meta.date}`, '');
       for (const b of p.bullets) lines.push(`- ${b}`);
       if (p.bullets.length) lines.push('');
     }
@@ -349,7 +407,11 @@ function renderMarkdown() {
 const chrome = findChromium(process.env.CHROME_PATH);
 if (!chrome) die('no Chrome/Edge/Chromium found. Set CHROME_PATH to a Chromium binary.');
 
-const outputs = [
+type Output =
+  | { label: string; file: string; kind: 'pdf'; withPhone: boolean }
+  | { label: string; file: string; kind: 'md' };
+
+const outputs: Output[] = [
   {
     label: 'master PDF',
     file: path.join(careerHome, 'Resumes', 'joseph-severino-resume.pdf'),
@@ -369,7 +431,7 @@ const outputs = [
   },
 ];
 
-function assertOnePage(file, label) {
+function assertOnePage(file: string, label: string): void {
   const result = spawnSync('pdfinfo', [file], { encoding: 'utf8' });
   if (result.error || result.status !== 0) {
     console.warn(`generate-resumes: pdfinfo unavailable — skipped page-count check for ${label}`);
@@ -387,14 +449,14 @@ for (const out of outputs) {
     try {
       printHtmlToPdf({
         chrome,
-        html: renderHtml({ withPhone: out.withPhone }),
+        html: renderHtml(out.withPhone),
         output: out.file,
         tmpPrefix: `generate-resumes-${out.withPhone ? 'master' : 'public'}`,
         keepHtml: !!process.env.RESUME_KEEP_HTML,
         onKeepHtml: (p) => console.log(`generate-resumes: kept HTML at ${p}`),
       });
     } catch (error) {
-      die(error.message);
+      die((error as Error).message);
     }
     assertOnePage(out.file, out.label);
   }

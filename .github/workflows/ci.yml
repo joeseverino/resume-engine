@@ -1,0 +1,16 @@
+# The whole CI surface: cordon's reusable gate sets up Node from .nvmrc, runs
+# `npm ci`, and folds this repo's `check:*` scripts (tsc, node --test) into
+# cordon's invariants. Required status check: `cordon / gate`.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cordon:
+    uses: joeseverino/cordon/.github/workflows/cordon-gate.yml@main

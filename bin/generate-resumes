@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// generate-resumes — render the canonical resume to master PDF, public PDF, and markdown.
+// generate-resumes: render the canonical resume to master PDF, public PDF, and markdown.
 // Thin launcher; implementation lives in lib/generate-resumes/.
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-await import(path.join(here, '..', 'lib', 'generate-resumes', 'index.mjs'));
+import '../lib/generate-resumes/index.ts';
