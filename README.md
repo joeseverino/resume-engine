@@ -84,7 +84,7 @@ bin/reconcile-coursework [--check]
 
 The one line whose facts live outside the canonical — each institution's
 "Relevant Coursework" — is reconciled from the education vault's governed
-export (`severino-edu-mcp export`), the same dataset behind the site's
+export (`severino-vault-mcp export education`), the same dataset behind the site's
 `/education/` pages: completed courses only, in term order, `short_title`
 preferred over the catalog title. Trailing surface markers are preserved,
 institutions without a vault presence are left alone, and `--check` reports
