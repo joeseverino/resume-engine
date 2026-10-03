@@ -19,7 +19,8 @@ import {
   type ProjectMeta,
 } from '../grammar.ts';
 
-// The surface of the tools repo's untyped pdf-engine this renderer uses.
+// The surface of the tools repo's pdf-engine (lib/pdf-engine/index.ts) this
+// renderer uses; it is resolved from TOOLS_HOME at run time.
 interface PdfEngine {
   fileDataUrl(file: string, mediaType: string): string;
   htmlText(value: string): string;
@@ -120,7 +121,7 @@ for (let i = 0; i < args.length; i += 1) {
 }
 if (!fs.existsSync(input)) die(`canonical resume not found: ${input}`);
 
-const enginePath = path.join(toolsHome, 'lib', 'pdf-engine', 'index.mjs');
+const enginePath = path.join(toolsHome, 'lib', 'pdf-engine', 'index.ts');
 if (!fs.existsSync(enginePath)) die(`tools pdf-engine not found: ${enginePath} (set TOOLS_HOME)`);
 const { fileDataUrl, htmlText, findChromium, printHtmlToPdf } = (await import(enginePath)) as PdfEngine;
 
