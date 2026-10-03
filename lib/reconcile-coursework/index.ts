@@ -1,6 +1,6 @@
 // reconcile-coursework: rewrite each institution's "Relevant Coursework" line
 // in the canonical resume from the education vault's governed export
-// (`severino-edu-mcp export`), so completed coursework is authored once, in
+// (`severino-vault-mcp export education`), so completed coursework is authored once, in
 // the course's own frontmatter. Completed courses only: the resume never
 // lists in-progress work; the site's /education/ pages do. Display names
 // prefer the vault's `short_title` (one-page fit) over the catalog title.
@@ -48,7 +48,7 @@ const SPEC = {
   effect: 'local_write',
   global_options: [],
   paras: [
-    'Reads `severino-edu-mcp export` (the same dataset behind the site’s /education/ pages) and rewrites each exported institution’s "- Relevant Coursework:" line in LIFE_HOME/Career/resume.md: completed courses only, in term order, `short_title` preferred over the catalog title. Trailing surface markers on the line are preserved; institutions with no vault presence are left alone.',
+    'Reads `severino-vault-mcp export education` (the same dataset behind the site’s /education/ pages) and rewrites each exported institution’s "- Relevant Coursework:" line in LIFE_HOME/Career/resume.md: completed courses only, in term order, `short_title` preferred over the catalog title. Trailing surface markers on the line are preserved; institutions with no vault presence are left alone.',
     'With --check, reports drift and exits 1 without writing — the verify face for rb-update-resume.',
   ],
   examples: ['reconcile-coursework', 'reconcile-coursework --check'],
@@ -83,7 +83,7 @@ if (!fs.existsSync(input)) die(`canonical resume not found: ${input}`);
 
 let dataset: EducationExport;
 try {
-  dataset = JSON.parse(execFileSync('severino-edu-mcp', ['export'], { encoding: 'utf8' })) as EducationExport;
+  dataset = JSON.parse(execFileSync('severino-vault-mcp', ['export', 'education'], { encoding: 'utf8' })) as EducationExport;
 } catch (error) {
   const { stderr, message } = error as { stderr?: Buffer | string; message: string };
   die(`education export failed: ${stderr?.toString().trim() || message}`);
