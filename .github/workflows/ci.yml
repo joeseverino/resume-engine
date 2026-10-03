@@ -13,4 +13,4 @@ permissions:
 
 jobs:
   cordon:
-    uses: joeseverino/cordon/.github/workflows/cordon-gate.yml@main
+    uses: joeseverino/cordon/.github/workflows/cordon-gate.yml@v2
