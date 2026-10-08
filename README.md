@@ -19,7 +19,9 @@ sections, organizations, roles, bullets, certification lines, project blocks.
 An unrecognized line fails the render, so content drift is caught at generate
 time, never on paper. The theme typesets vendored EB Garamond (OFL) on US
 Letter with a bold date column, and a one-page gate (via `pdfinfo`) fails the
-build rather than let the resume quietly grow a second page.
+build rather than let the resume quietly grow a second page. Without
+`pdfinfo` (poppler) the check is skipped with a warning locally and fails the
+run when `CI` is set.
 
 **The site sync** (in the
 [jseverino.com](https://github.com/joeseverino/jseverino.com) repo) renders
@@ -69,17 +71,17 @@ imports `lib/grammar.ts` the same way.
 
 ```sh
 npm ci
-npm run typecheck   # strict tsc --noEmit over lib/ and tests/
-npm test            # node --test
+npm run check:types   # strict tsc --noEmit over lib/ and tests/
+npm run check:unit    # node --test
 ```
 
-CI runs the same two through cordon's reusable gate (`check:types`,
-`check:unit`).
+CI runs the same two through cordon's reusable gate. `cordon-spec` is a dev
+dependency used only for `--describe`; rendering needs no installed packages.
 
 ### reconcile-coursework
 
 ```sh
-bin/reconcile-coursework [--check]
+bin/reconcile-coursework [--input <resume.md>] [--check]
 ```
 
 The one line whose facts live outside the canonical — each institution's
@@ -118,6 +120,7 @@ this keeps its coursework line honest.
 | `SITE_HOME` | `$CODE_HOME/Projects/jseverino.com` | Public PDF destination |
 | `RESUME_BRAND_KIT` | severino-brand kit | Token source override |
 | `RESUME_KEEP_HTML` | unset | Keep the intermediate HTML for inspection |
+| `CI` | unset | When set, a missing `pdfinfo` fails the run instead of warning |
 
 ## License
 

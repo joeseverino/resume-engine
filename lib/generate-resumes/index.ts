@@ -8,7 +8,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import type { SurfaceSpec } from 'cordon-spec/emit';
+import { parseFlags, printContract } from '../cli.ts';
+import { loadPdfEngine } from '../pdf-engine.ts';
 import {
   linesForArtifacts,
   matchOrg,
@@ -18,22 +20,6 @@ import {
   tenureSpan,
   type ProjectMeta,
 } from '../grammar.ts';
-
-// The surface of the tools repo's pdf-engine (lib/pdf-engine/index.ts) this
-// renderer uses; it is resolved from TOOLS_HOME at run time.
-interface PdfEngine {
-  fileDataUrl(file: string, mediaType: string): string;
-  htmlText(value: string): string;
-  findChromium(explicitPath?: string): string | null;
-  printHtmlToPdf(options: {
-    chrome: string;
-    html: string;
-    output: string;
-    tmpPrefix?: string;
-    keepHtml?: boolean;
-    onKeepHtml?: (file: string) => void;
-  }): void;
-}
 
 interface Role {
   title: string;
@@ -70,60 +56,55 @@ interface Identity {
   phone?: string;
 }
 
-const repoHome = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const codeHome = process.env.CODE_HOME || path.join(os.homedir(), 'Code');
-const toolsHome = process.env.TOOLS_HOME || path.join(codeHome, 'Assets', 'tools');
-const lifeHome = process.env.LIFE_HOME || path.join(os.homedir(), 'Documents', 'Life');
-const careerHome = process.env.CAREER_HOME || path.join(os.homedir(), 'Documents', 'Career');
-const siteHome = process.env.SITE_HOME || path.join(codeHome, 'Projects', 'jseverino.com');
+const repoHome = path.resolve(import.meta.dirname, '..', '..');
+const codeHome = process.env['CODE_HOME'] || path.join(os.homedir(), 'Code');
+const toolsHome = process.env['TOOLS_HOME'] || path.join(codeHome, 'Assets', 'tools');
+const lifeHome = process.env['LIFE_HOME'] || path.join(os.homedir(), 'Documents', 'Life');
+const careerHome = process.env['CAREER_HOME'] || path.join(os.homedir(), 'Documents', 'Career');
+const siteHome = process.env['SITE_HOME'] || path.join(codeHome, 'Projects', 'jseverino.com');
 
 function die(msg: string): never {
   console.error(`generate-resumes: ${msg}`);
   process.exit(1);
 }
 
-const SPEC = {
-  ok: true,
-  schema_version: 4,
+const SPEC: SurfaceSpec = {
   name: 'generate-resumes',
   description: 'Render the canonical resume markdown to the master PDF, the public redacted PDF, and a markdown artifact.',
   group: 'Authoring',
   order: 171,
   effect: 'local_write',
-  global_options: [],
   paras: [
     'The canonical source is the Life vault resume (LIFE_HOME/Career/resume.md). Outputs: master PDF with phone into CAREER_HOME/Resumes/, redacted PDF into the site repo public/assets/docs/, and a redacted standalone markdown resume into CAREER_HOME/Resumes/.',
     'Typesetting is EB Garamond (vendored, OFL) on US Letter, one page enforced via pdfinfo when available. The HTML-to-PDF engine is the shared lib/pdf-engine, the same one doc-to-pdf uses.',
   ],
-  examples: ['generate-resumes', 'generate-resumes --input ~/Documents/Life/Career/resume.md'],
-  positionals: [],
-  commands: [],
+  examples: [['generate-resumes'], ['generate-resumes --input ~/Documents/Life/Career/resume.md']],
 };
 
-const args = process.argv.slice(2).filter((a) => a !== '--');
-if (args[0] === '--describe') {
-  console.log(args.includes('--pretty') ? JSON.stringify(SPEC, null, 2) : JSON.stringify(SPEC));
-  process.exit(0);
-}
-if (args[0] === '-h' || args[0] === '--help') {
+const flags = parseFlags(
+  {
+    describe: { type: 'boolean' },
+    pretty: { type: 'boolean' },
+    help: { type: 'boolean', short: 'h' },
+    input: { type: 'string' },
+  },
+  process.argv.slice(2),
+  die,
+);
+if (flags.pretty && !flags.describe) die('unknown argument: --pretty');
+if (flags.describe) await printContract(SPEC, flags.pretty === true, die);
+if (flags.help) {
   console.log(`Usage: generate-resumes [--input <resume.md>]\n${SPEC.description}`);
   process.exit(0);
 }
 
-let input = path.join(lifeHome, 'Career', 'resume.md');
-for (let i = 0; i < args.length; i += 1) {
-  if (args[i] === '--input') {
-    input = path.resolve(args[i + 1] || '');
-    i += 1;
-  } else {
-    die(`unknown argument: ${args[i]}`);
-  }
-}
+const input = flags.input === undefined ? path.join(lifeHome, 'Career', 'resume.md') : path.resolve(flags.input);
 if (!fs.existsSync(input)) die(`canonical resume not found: ${input}`);
 
 const enginePath = path.join(toolsHome, 'lib', 'pdf-engine', 'index.ts');
-if (!fs.existsSync(enginePath)) die(`tools pdf-engine not found: ${enginePath} (set TOOLS_HOME)`);
-const { fileDataUrl, htmlText, findChromium, printHtmlToPdf } = (await import(enginePath)) as PdfEngine;
+const { fileDataUrl, htmlText, findChromium, printHtmlToPdf } = await loadPdfEngine(enginePath).catch((error: unknown) =>
+  die(error instanceof Error ? error.message : String(error)),
+);
 
 // ---------------------------------------------------------------------------
 // Parse: frontmatter (contact identity) + the structured resume body.
@@ -153,7 +134,7 @@ const frontmatter: Identity = {
   github: field('github'),
   website: field('website'),
   location: field('location'),
-  ...(fields.phone ? { phone: fields.phone } : {}),
+  ...(fields['phone'] ? { phone: fields['phone'] } : {}),
 };
 
 function absoluteHref(href: string): string {
@@ -234,9 +215,9 @@ for (const [n, line] of body.entries()) {
 // Theme: US Letter, one page, EB Garamond, date columns.
 // ---------------------------------------------------------------------------
 
-const brandHome = process.env.BRAND_HOME || path.join(codeHome, 'Assets', 'severino-brand');
+const brandHome = process.env['BRAND_HOME'] || path.join(codeHome, 'Assets', 'severino-brand');
 const brandKit = path.resolve(
-  process.env.RESUME_BRAND_KIT || process.env.DOCTOPDF_BRAND_KIT || path.join(brandHome, 'kits', 'joe-severino'),
+  process.env['RESUME_BRAND_KIT'] || process.env['DOCTOPDF_BRAND_KIT'] || path.join(brandHome, 'kits', 'joe-severino'),
 );
 let brandTokens = '';
 try {
@@ -405,7 +386,7 @@ function renderMarkdown(): string {
 // Render the three artifacts.
 // ---------------------------------------------------------------------------
 
-const chrome = findChromium(process.env.CHROME_PATH);
+const chrome = findChromium(process.env['CHROME_PATH']);
 if (!chrome) die('no Chrome/Edge/Chromium found. Set CHROME_PATH to a Chromium binary.');
 
 type Output =
@@ -435,6 +416,7 @@ const outputs: Output[] = [
 function assertOnePage(file: string, label: string): void {
   const result = spawnSync('pdfinfo', [file], { encoding: 'utf8' });
   if (result.error || result.status !== 0) {
+    if (process.env['CI']) die(`pdfinfo unavailable, so the page-count check for ${label} cannot run (required when CI is set; install poppler-utils)`);
     console.warn(`generate-resumes: pdfinfo unavailable — skipped page-count check for ${label}`);
     return;
   }
@@ -453,7 +435,7 @@ for (const out of outputs) {
         html: renderHtml(out.withPhone),
         output: out.file,
         tmpPrefix: `generate-resumes-${out.withPhone ? 'master' : 'public'}`,
-        keepHtml: !!process.env.RESUME_KEEP_HTML,
+        keepHtml: !!process.env['RESUME_KEEP_HTML'],
         onKeepHtml: (p) => console.log(`generate-resumes: kept HTML at ${p}`),
       });
     } catch (error) {
