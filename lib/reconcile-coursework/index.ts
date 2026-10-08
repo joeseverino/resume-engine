@@ -9,6 +9,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import type { SurfaceSpec } from 'cordon-spec/emit';
+import { parseFlags, printContract } from '../cli.ts';
 import { matchOrg } from '../grammar.ts';
 
 // The slice of the education export this command reads.
@@ -30,54 +32,47 @@ interface EducationExport {
   institutions: Institution[];
 }
 
-const lifeHome = process.env.LIFE_HOME || path.join(os.homedir(), 'Documents', 'Life');
+const lifeHome = process.env['LIFE_HOME'] || path.join(os.homedir(), 'Documents', 'Life');
 
 function die(msg: string): never {
   console.error(`reconcile-coursework: ${msg}`);
   process.exit(1);
 }
 
-const SPEC = {
-  ok: true,
-  schema_version: 4,
+const SPEC: SurfaceSpec = {
   name: 'reconcile-coursework',
   description:
     'Rewrite the canonical resume’s "Relevant Coursework" lines from the education vault’s governed export.',
   group: 'Authoring',
   order: 172,
   effect: 'local_write',
-  global_options: [],
   paras: [
     'Reads `severino-vault-mcp export education` (the same dataset behind the site’s /education/ pages) and rewrites each exported institution’s "- Relevant Coursework:" line in LIFE_HOME/Career/resume.md: completed courses only, in term order, `short_title` preferred over the catalog title. Trailing surface markers on the line are preserved; institutions with no vault presence are left alone.',
     'With --check, reports drift and exits 1 without writing — the verify face for rb-update-resume.',
   ],
-  examples: ['reconcile-coursework', 'reconcile-coursework --check'],
-  positionals: [],
-  commands: [],
+  examples: [['reconcile-coursework'], ['reconcile-coursework --check']],
 };
 
-const args = process.argv.slice(2).filter((a) => a !== '--');
-if (args[0] === '--describe') {
-  console.log(args.includes('--pretty') ? JSON.stringify(SPEC, null, 2) : JSON.stringify(SPEC));
-  process.exit(0);
-}
-if (args[0] === '-h' || args[0] === '--help') {
+const flags = parseFlags(
+  {
+    describe: { type: 'boolean' },
+    pretty: { type: 'boolean' },
+    help: { type: 'boolean', short: 'h' },
+    input: { type: 'string' },
+    check: { type: 'boolean' },
+  },
+  process.argv.slice(2),
+  die,
+);
+if (flags.pretty && !flags.describe) die('unknown argument: --pretty');
+if (flags.describe) await printContract(SPEC, flags.pretty === true, die);
+if (flags.help) {
   console.log(`Usage: reconcile-coursework [--input <resume.md>] [--check]\n${SPEC.description}`);
   process.exit(0);
 }
 
-let input = path.join(lifeHome, 'Career', 'resume.md');
-let check = false;
-for (let i = 0; i < args.length; i += 1) {
-  if (args[i] === '--input') {
-    input = path.resolve(args[i + 1] || '');
-    i += 1;
-  } else if (args[i] === '--check') {
-    check = true;
-  } else {
-    die(`unknown argument: ${args[i]}`);
-  }
-}
+const input = flags.input === undefined ? path.join(lifeHome, 'Career', 'resume.md') : path.resolve(flags.input);
+const check = flags.check === true;
 
 if (!fs.existsSync(input)) die(`canonical resume not found: ${input}`);
 

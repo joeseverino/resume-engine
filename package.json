@@ -20,13 +20,12 @@
     "reconcile-coursework": "bin/reconcile-coursework"
   },
   "scripts": {
-    "typecheck": "tsc",
-    "test": "node --test 'tests/**/*.test.ts'",
     "check:types": "tsc",
     "check:unit": "node --test 'tests/**/*.test.ts'"
   },
   "devDependencies": {
     "@types/node": "24.19.1",
+    "cordon-spec": "2.0.0",
     "typescript": "7.0.2"
   }
 }
